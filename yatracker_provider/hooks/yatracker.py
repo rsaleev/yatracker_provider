@@ -10,8 +10,8 @@ from ..models.issue import (
     IssueModel,
     IssueModify,
     IssueRelationship,
+    IssueSearch,
     IssueTransited,
-    IssueSearch
 )
 
 
@@ -55,9 +55,8 @@ class YatrackerHook(BaseHook):
         headers["X-Org-Id"] = conn.password
         session.headers.update(headers)
         return session
-    
 
-    def import_issue(self, data: IssueImport)->IssueImported:
+    def __import_issue(self, data: IssueImport) -> IssueImported:
         session = self.get_conn()
         url = f"{self.base_url}/{self.api_ver}/issues/_import"
         r = session.post(url=url, data=data.json(by_alias=True, exclude_none=True))
@@ -66,7 +65,10 @@ class YatrackerHook(BaseHook):
         session.close()
         return IssueImported.parse_obj(payload)
 
-    def edit_issue(self, issue_id: str, data: IssueModify)->IssueModel:
+    def import_issue(self, data: IssueImport) -> IssueImported:
+        return self.retry_obj(self.__import_issue, data)
+
+    def __edit_issue(self, issue_id: str, data: IssueModify) -> IssueModel:
         session = self.get_conn()
         url = f"{self.base_url}/{self.api_ver}/issues/{issue_id}"
         r = session.patch(url=url, data=data.json(by_alias=True, exclude_none=True))
@@ -75,7 +77,10 @@ class YatrackerHook(BaseHook):
         session.close()
         return IssueModel.parse_obj(payload)
 
-    def link_issues(self, issue_id: str, data: IssueLink)->IssueRelationship:
+    def edit_issue(self, issue_id: str, data: IssueModify) -> IssueModel:
+        return self.retry_obj(self.__edit_issue, issue_id, data)
+
+    def __link_issues(self, issue_id: str, data: IssueLink) -> IssueRelationship:
         session = self.get_conn()
         url = f"{self.base_url}/{self.api_ver}/issues/{issue_id}/links"
         r = session.post(url=url, data=data.json(by_alias=True, exclude_none=True))
@@ -83,15 +88,21 @@ class YatrackerHook(BaseHook):
         payload = r.json()
         return IssueRelationship.parse_obj(payload)
 
-    def transit_issue(self, issue_id: str, transition_id: int)->IssueTransited:
+    def link_issues(self, issue_id: str, data: IssueLink) -> IssueRelationship:
+        return self.retry_obj(self.__link_issues, issue_id, data)
+
+    def __transit_issue(self, issue_id: str, transition_id: int) -> IssueTransited:
         session = self.get_conn()
         url = f"{self.base_url}/{self.api_ver}/issues/{issue_id}/transitions/{transition_id}/_execute"
         r = session.post(url=url)
         r.raise_for_status()
         payload = r.json()
         return IssueTransited.parse_obj(payload)
-    
-    def search_issue(self, data:IssueSearch)->IssueModel:
+
+    def transit_issues(self, issue_id: str, transition_id: int) -> IssueTransited:
+        return self.retry_obj(self.__transit_issue, issue_id, transition_id)
+
+    def __search_issue(self, data: IssueSearch) -> IssueModel:
         session = self.get_conn()
         url = f"{self.base_url}/{self.api_ver}/issues/_search"
         r = session.post(url=url, data=data.json(by_alias=True, exclude_none=True))
@@ -99,7 +110,8 @@ class YatrackerHook(BaseHook):
         payload = r.json()
         return IssueModel.parse_obj(payload)
 
-
+    def search_issue(self, data: IssueSearch) -> IssueModel:
+        return self.retry_obj(self.__search_issue, data)
 
     def run(self):
         raise NotImplementedError
