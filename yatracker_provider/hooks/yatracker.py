@@ -1,3 +1,5 @@
+from typing import List
+
 import requests
 import tenacity
 from airflow.exceptions import AirflowNotFoundException
@@ -25,8 +27,6 @@ class YatrackerHook(BaseHook):
         super().__init__()
         self.yatracker_conn_id = yatracker_conn_id
         self.base_url = ""
-        self.token = ""
-        self.org_id = ""
         self.api_ver = "v2"
         self.retry_obj = tenacity.Retrying(
             stop=tenacity.stop_after_attempt(3),
@@ -86,6 +86,7 @@ class YatrackerHook(BaseHook):
         r = session.post(url=url, data=data.json(by_alias=True, exclude_none=True))
         r.raise_for_status()
         payload = r.json()
+        session.close()
         return IssueRelationship.parse_obj(payload)
 
     def link_issues(self, issue_id: str, data: IssueLink) -> IssueRelationship:
@@ -97,20 +98,22 @@ class YatrackerHook(BaseHook):
         r = session.post(url=url)
         r.raise_for_status()
         payload = r.json()
+        session.close()
         return IssueTransited.parse_obj(payload)
 
     def transit_issues(self, issue_id: str, transition_id: int) -> IssueTransited:
         return self.retry_obj(self.__transit_issue, issue_id, transition_id)
 
-    def __search_issue(self, data: IssueSearch) -> IssueModel:
+    def __search_issue(self, data: IssueSearch) -> List[IssueModel]:
         session = self.get_conn()
         url = f"{self.base_url}/{self.api_ver}/issues/_search"
         r = session.post(url=url, data=data.json(by_alias=True, exclude_none=True))
         r.raise_for_status()
         payload = r.json()
-        return IssueModel.parse_obj(payload)
+        session.close()
+        return [IssueModel.parse_obj(item) for item in payload]
 
-    def search_issue(self, data: IssueSearch) -> IssueModel:
+    def search_issue(self, data: IssueSearch) -> List[IssueModel]:
         return self.retry_obj(self.__search_issue, data)
 
     def run(self):
